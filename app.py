@@ -22,6 +22,38 @@ MODEL_URLS = {
     "Black Panther": "https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip"
 }
 
+# Space နာမည် (မူရင်း r3gm ကိုပဲ သုံးပါမယ်)
+SPACE_ID = "r3gm/AICoverGen"
+
+def get_valid_client():
+    """Model List ရတဲ့အထိ ဇွဲရှိရှိ ကြိုးစားမည့် Function"""
+    max_retries = 5
+    for i in range(max_retries):
+        try:
+            print(f"Connecting to AI Server... (Attempt {i+1}/{max_retries})")
+            client = Client(SPACE_ID)
+            
+            # Connection ရရင် List ကို စစ်မယ် (Update လုပ်ခိုင်းမယ်)
+            try:
+                result = client.predict(api_name="/update_models_list")
+                # List က အလွတ် [] မဟုတ်ကြောင်း စစ်ဆေးမယ်
+                if "choices" in str(result) and "[]" not in str(result):
+                    print("Connected and Models found!")
+                    return client
+                else:
+                    print("Server connected but Model List is empty. Retrying...")
+            except:
+                print("Checking list failed. Retrying...")
+                
+        except Exception as e:
+            print(f"Connection failed: {e}")
+        
+        # မရရင် ၅ စက္ကန့် စောင့်ပြီး ပြန်စမ်းမယ်
+        time.sleep(5)
+    
+    # ၅ ခါလုံး မရရင်တော့ ရှိတာနဲ့ပဲ ဆက်သွားမယ် (Error တက်နိုင်)
+    return Client(SPACE_ID)
+
 @app.route('/generate', methods=['POST'])
 def generate_voice():
     try:
@@ -31,42 +63,39 @@ def generate_voice():
         
         if not text: return jsonify({"error": "စာရိုက်ပါ"}), 400
 
-        print(f"1. Edge-TTS Generating: {text}...")
+        print(f"=== Starting Process for {model_name} ===")
+
+        # ၁. Edge-TTS (မြန်မာအသံ)
         tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
         asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
+        print("1. Edge-TTS Done.")
 
-        # ၂. r3gm ကိုပဲ ပြန်သုံးပါမယ် (SocialAI မသုံးရ)
-        SPACE_ID = "r3gm/AICoverGen"
-        client = Client(SPACE_ID)
-        
-        # ၃. Model Download (လိုအပ်လျှင်)
+        # ၂. Smart Client ချိတ်ဆက်ခြင်း
+        client = get_valid_client()
+
+        # ၃. Download Logic
         if model_name in MODEL_URLS:
-            print(f"2. Checking/Downloading Model: {model_name}...")
+            print(f"2. Downloading Model: {model_name}...")
             try:
-                # Download API ခေါ်မယ်
                 client.predict(
                     MODEL_URLS[model_name],
                     model_name,
                     api_name="/download_model"
                 )
-                print("   Download command sent.")
-                
-                # List ကို update လုပ်ခိုင်းမယ်
+                # Download ပြီးရင် List ကို တခါထပ် Refresh လုပ်မယ်
                 client.predict(api_name="/update_models_list")
                 
+                # List ထဲရောက်မရောက် သေချာအောင် Client ကို Reload လုပ်မယ်
+                client = Client(SPACE_ID)
+                
             except Exception as e:
-                print(f"   Download warning: {e}")
+                print(f"Download warning: {e}")
 
-        # ၄. *** Re-Connect to Refresh List *** (အရေးကြီးဆုံးအဆင့်)
-        # Download ပြီးတာနဲ့ Client အသစ်ပြန်ဆောက်လိုက်မှ List အသစ်ကို မြင်မှာပါ
-        print("3. Refreshing Client...")
-        client = Client(SPACE_ID) 
-
-        # ၅. Voice Conversion
-        print(f"4. Converting with {model_name}...")
+        # ၄. Voice Conversion
+        print("3. Converting Voice (This takes time)...")
         result_path = client.predict(
             song_input=handle_file(tts_path),
-            voice_model=model_name, # အခုဆိုရင် List ထဲရောက်နေပြီမို့ Error မတက်တော့ဘူး
+            voice_model=model_name,
             pitch_change=0,
             keep_files=False,
             is_webui=1,
@@ -93,8 +122,12 @@ def generate_voice():
         return send_file(result_path, mimetype="audio/mpeg")
 
     except Exception as e:
-        print(f"Server Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        print(f"FINAL ERROR: {e}")
+        # Error တက်ရင် User ကို ရှင်းရှင်းလင်းလင်း ပြန်ပြောမယ်
+        error_msg = str(e)
+        if "[]" in error_msg:
+            error_msg = "Server is warming up. Please click Generate again in 30 seconds."
+        return jsonify({"error": error_msg}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
