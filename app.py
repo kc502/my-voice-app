@@ -22,37 +22,38 @@ MODEL_URLS = {
     "Black Panther": "https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip"
 }
 
-# Space နာမည် (မူရင်း r3gm ကိုပဲ သုံးပါမယ်)
+# *** ဒီနေရာမှာ Token ထည့်ပါ (အရေးကြီးဆုံး) ***
+# "hf_xxxx..." နေရာမှာ သင် Copy ကူးလာတဲ့ Token ကို ထည့်ပါ
+HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
+
 SPACE_ID = "r3gm/AICoverGen"
 
 def get_valid_client():
-    """Model List ရတဲ့အထိ ဇွဲရှိရှိ ကြိုးစားမည့် Function"""
+    """Token အသုံးပြု၍ Client ချိတ်ဆက်ခြင်း"""
     max_retries = 5
     for i in range(max_retries):
         try:
-            print(f"Connecting to AI Server... (Attempt {i+1}/{max_retries})")
-            client = Client(SPACE_ID)
+            print(f"Connecting with Token... (Attempt {i+1}/{max_retries})")
             
-            # Connection ရရင် List ကို စစ်မယ် (Update လုပ်ခိုင်းမယ်)
+            # *** hf_token ထည့်လိုက်မှ Quota တိုးမှာပါ ***
+            client = Client(SPACE_ID, hf_token=HF_TOKEN)
+            
             try:
                 result = client.predict(api_name="/update_models_list")
-                # List က အလွတ် [] မဟုတ်ကြောင်း စစ်ဆေးမယ်
                 if "choices" in str(result) and "[]" not in str(result):
                     print("Connected and Models found!")
                     return client
                 else:
-                    print("Server connected but Model List is empty. Retrying...")
+                    print("Connected but List empty. Retrying...")
             except:
                 print("Checking list failed. Retrying...")
                 
         except Exception as e:
             print(f"Connection failed: {e}")
         
-        # မရရင် ၅ စက္ကန့် စောင့်ပြီး ပြန်စမ်းမယ်
         time.sleep(5)
     
-    # ၅ ခါလုံး မရရင်တော့ ရှိတာနဲ့ပဲ ဆက်သွားမယ် (Error တက်နိုင်)
-    return Client(SPACE_ID)
+    return Client(SPACE_ID, hf_token=HF_TOKEN)
 
 @app.route('/generate', methods=['POST'])
 def generate_voice():
@@ -65,12 +66,12 @@ def generate_voice():
 
         print(f"=== Starting Process for {model_name} ===")
 
-        # ၁. Edge-TTS (မြန်မာအသံ)
+        # ၁. Edge-TTS
         tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
         asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
         print("1. Edge-TTS Done.")
 
-        # ၂. Smart Client ချိတ်ဆက်ခြင်း
+        # ၂. Smart Client (Token ပါသည်)
         client = get_valid_client()
 
         # ၃. Download Logic
@@ -82,17 +83,15 @@ def generate_voice():
                     model_name,
                     api_name="/download_model"
                 )
-                # Download ပြီးရင် List ကို တခါထပ် Refresh လုပ်မယ်
                 client.predict(api_name="/update_models_list")
-                
-                # List ထဲရောက်မရောက် သေချာအောင် Client ကို Reload လုပ်မယ်
-                client = Client(SPACE_ID)
+                # Reload Client to see new models
+                client = Client(SPACE_ID, hf_token=HF_TOKEN)
                 
             except Exception as e:
                 print(f"Download warning: {e}")
 
         # ၄. Voice Conversion
-        print("3. Converting Voice (This takes time)...")
+        print("3. Converting Voice...")
         result_path = client.predict(
             song_input=handle_file(tts_path),
             voice_model=model_name,
@@ -123,11 +122,7 @@ def generate_voice():
 
     except Exception as e:
         print(f"FINAL ERROR: {e}")
-        # Error တက်ရင် User ကို ရှင်းရှင်းလင်းလင်း ပြန်ပြောမယ်
-        error_msg = str(e)
-        if "[]" in error_msg:
-            error_msg = "Server is warming up. Please click Generate again in 30 seconds."
-        return jsonify({"error": error_msg}), 500
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
