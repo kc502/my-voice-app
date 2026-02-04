@@ -1,6 +1,7 @@
 import os
 import asyncio
 import edge_tts
+import time
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from gradio_client import Client, handle_file
@@ -26,42 +27,46 @@ def generate_voice():
     try:
         data = request.json
         text = data.get("text", "")
-        model_name = data.get("model", "IvanZolo2004") 
+        model_name = data.get("model", "Tom Holland") 
         
         if not text: return jsonify({"error": "စာရိုက်ပါ"}), 400
 
-        print(f"Processing: {model_name}")
-
-        # ၁. Edge-TTS
+        print(f"1. Edge-TTS Generating: {text}...")
         tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
         asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
 
-        # ၂. Client ပြောင်းထားသည် (SocialAI)
-        client = Client("SocialAI/AICoverGen")
+        # ၂. r3gm ကိုပဲ ပြန်သုံးပါမယ် (SocialAI မသုံးရ)
+        SPACE_ID = "r3gm/AICoverGen"
+        client = Client(SPACE_ID)
         
-        # ၃. Download လုပ်ခြင်း
+        # ၃. Model Download (လိုအပ်လျှင်)
         if model_name in MODEL_URLS:
-            print(f"Downloading {model_name}...")
+            print(f"2. Checking/Downloading Model: {model_name}...")
             try:
+                # Download API ခေါ်မယ်
                 client.predict(
                     MODEL_URLS[model_name],
                     model_name,
                     api_name="/download_model"
                 )
+                print("   Download command sent.")
                 
-                # *** အသစ်ထည့်ထားသည် ***
-                # Download ပြီးရင် List ကို Refresh လုပ်ခိုင်းမှ ရပါမယ်
+                # List ကို update လုပ်ခိုင်းမယ်
                 client.predict(api_name="/update_models_list")
-                print("Model list updated.")
                 
             except Exception as e:
-                print(f"Download Error (Ignored if exists): {e}")
+                print(f"   Download warning: {e}")
 
-        # ၄. Generate
-        print("Converting...")
+        # ၄. *** Re-Connect to Refresh List *** (အရေးကြီးဆုံးအဆင့်)
+        # Download ပြီးတာနဲ့ Client အသစ်ပြန်ဆောက်လိုက်မှ List အသစ်ကို မြင်မှာပါ
+        print("3. Refreshing Client...")
+        client = Client(SPACE_ID) 
+
+        # ၅. Voice Conversion
+        print(f"4. Converting with {model_name}...")
         result_path = client.predict(
             song_input=handle_file(tts_path),
-            voice_model=model_name,
+            voice_model=model_name, # အခုဆိုရင် List ထဲရောက်နေပြီမို့ Error မတက်တော့ဘူး
             pitch_change=0,
             keep_files=False,
             is_webui=1,
@@ -88,7 +93,7 @@ def generate_voice():
         return send_file(result_path, mimetype="audio/mpeg")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Server Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
