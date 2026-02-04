@@ -1,59 +1,91 @@
-import os
-import asyncio
-import edge_tts
+# app.py အပေါ်ဆုံးနားမှာ ဒါတွေပါမပါ စစ်ပါ (မပါရင် ထပ်ထည့်ပါ)
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from gradio_client import Client, handle_file
+import edge_tts
+import asyncio
+import os
 
 app = Flask(__name__)
-CORS(app)  # Frontend မှ လှမ်းခေါ်ခွင့်ပြုရန်
+CORS(app)
 
-# ယာယီဖိုင်များ သိမ်းရန်နေရာ (Render မှာ /tmp ကို သုံးတာ စိတ်ချရပါတယ်)
-TEMP_DIR = "/tmp"
-if not os.path.exists(TEMP_DIR):
-    os.makedirs(TEMP_DIR)
+# Client ကို Global အနေနဲ့ တစ်ခါတည်း ကြေညာထားတာ ပိုမြန်ပါတယ်
+# (ဒါပေမဲ့ Error တက်ရင် ပြန်ချိတ်ဖို့ try-except ခံထားသင့်ပါတယ်)
+try:
+    hf_client = Client("r3gm/AICoverGen")
+except:
+    print("Cannot connect to Hugging Face initially.")
+    hf_client = None
 
-async def create_tts(text, voice, output_file):
-    """Edge-TTS ဖြင့် စာကို အသံပြောင်းပေးမည့် Function"""
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(output_file)
+# --- အသစ်ထပ်ထည့်ရမည့်အပိုင်း (Model List ယူရန်) ---
+@app.route('/models', methods=['GET'])
+def get_models():
+    global hf_client
+    try:
+        if hf_client is None:
+             hf_client = Client("r3gm/AICoverGen")
+        
+        # Space ထဲက Model စာရင်း update လုပ်ပေးတဲ့ API ကို ခေါ်လိုက်တာပါ
+        # ဒီကောင်က list ပြန်ပေးလေ့ရှိပါတယ်
+        models_result = hf_client.predict(api_name="/update_models_list")
+        
+        # Gradio API က return ပြန်တာ ပုံစံအမျိုးမျိုးရှိနိုင်လို့ list ကို သေချာဆွဲထုတ်ပါမယ်
+        # များသောအားဖြင့် Tuple (dropdown_update, list, ...) ပုံစံနဲ့ လာတတ်ပါတယ်
+        # ဒါကြောင့် models_result တွေကို စစ်ပြီး List ဖြစ်တဲ့ကောင်ကို ယူပါမယ်
+        
+        valid_models = []
+        
+        # ရလာတဲ့ Result ကို Print ထုတ်ကြည့်မယ် (Logs မှာ စစ်ဖို့)
+        print(f"Raw Models Result: {models_result}")
 
+        if isinstance(models_result, (list, tuple)):
+            for item in models_result:
+                # Gradio Dropdown update object တွေက Dictionary ပုံစံနဲ့ choices ပါတတ်တယ်
+                if isinstance(item, dict) and 'choices' in item:
+                    valid_models = item['choices']
+                    break
+                # တခါတလေ List အစစ်အတိုင်း ပါလာတတ်တယ်
+                elif isinstance(item, list) and len(item) > 0 and isinstance(item[0], str):
+                    valid_models = item
+                    break
+        
+        # ဘာမှရှာမတွေ့ရင် Default စာရင်းတစ်ခု ပေးလိုက်မယ် (Error မတက်အောင်)
+        if not valid_models:
+             valid_models = ['Ben 10', 'Spongebob', 'Doraemon'] # Fallback
+
+        return jsonify({"models": valid_models})
+
+    except Exception as e:
+        print(f"Model fetch error: {e}")
+        return jsonify({"error": str(e), "models": ["Error Fetching Models"]}), 500
+
+# --- အသံထုတ်သည့်အပိုင်း (Generate) ---
 @app.route('/generate', methods=['POST'])
 def generate_voice():
+    global hf_client
     try:
-        # Frontend မှ ပို့လိုက်သော Data ကို ယူမယ်
         data = request.json
         text = data.get("text", "")
+        # Frontend က ရွေးလိုက်တဲ့ Model နာမည်ကို လက်ခံယူမယ်
+        selected_model = data.get("model", "Ben 10") # မပါရင် Default ယူမယ်
         
         if not text:
-            return jsonify({"error": "စာသားထည့်ပါ"}), 400
+            return jsonify({"error": "No text provided"}), 400
 
-        print(f"Processing text: {text}")
+        # ၁. Edge-TTS (မြန်မာအသံ)
+        voice = "my-MM-ThihaNeural"
+        tts_path = "/tmp/temp_tts.mp3"
+        asyncio.run(edge_tts.Communicate(text, voice).save(tts_path))
 
-        # ၁. Edge-TTS ဖြင့် အသံဖိုင်အရင်ထုတ်မယ်
-        tts_filename = "temp_tts.mp3"
-        tts_path = os.path.join(TEMP_DIR, tts_filename)
+        # ၂. RVC (Voice Conversion)
+        if hf_client is None: hf_client = Client("r3gm/AICoverGen")
         
-        # Thiha (ကျား) သို့မဟုတ် Nilar (မ) ရွေးနိုင်သည်
-        voice = "my-MM-ThihaNeural" 
+        print(f"Using Model: {selected_model}")
         
-        # Async function ကို run မယ်
-        asyncio.run(create_tts(text, voice, tts_path))
-        print("Edge-TTS generated.")
-
-        # ၂. Hugging Face RVC သို့ ပို့ပြီး အသံပြောင်းမယ်
-        # သင်ပြထားသော AICoverGen Space ကို သုံးထားပါသည်
-        client = Client("r3gm/AICoverGen")
-        
-        # Model List ကို update လုပ်ခြင်း (မလုပ်ရင် error တက်တတ်လို့ပါ)
-        client.predict(api_name="/update_models_list")
-
-        print("Converting voice with RVC...")
-        
-        result_path = client.predict(
+        result_path = hf_client.predict(
             song_input=handle_file(tts_path),
-            voice_model="Ben 10",  # Space ထဲက ကြိုက်တဲ့ Model နာမည် ပြောင်းထည့်နိုင်ပါတယ်
-            pitch_change=0,           # 0 = ပုံမှန်၊ 12 = မိန်းမသံဘက်သွားမယ်
+            voice_model=selected_model, # ဒီနေရာမှာ User ရွေးတာ ထည့်မယ်
+            pitch_change=0,
             keep_files=False,
             is_webui=1,
             main_gain=0,
@@ -76,16 +108,11 @@ def generate_voice():
             api_name="/song_cover_pipeline"
         )
         
-        print(f"RVC finished. File at: {result_path}")
-
-        # ၃. ရလာတဲ့ အသံဖိုင်ကို Frontend သို့ ပြန်ပို့မယ်
         return send_file(result_path, mimetype="audio/mpeg")
 
     except Exception as e:
-        print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Render အတွက် Port Configuration
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
