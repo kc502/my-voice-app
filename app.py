@@ -22,13 +22,8 @@ MODEL_URLS = {
     "Black Panther": "https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip"
 }
 
-# ၁. Token ကို ဒီမှာထည့်ပါ (hf_... နဲ့စတာ)
-MY_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-# ၂. Environment Variable ထဲကို Token ထည့်လိုက်မယ်
-# (Library အဟောင်းဖြစ်နေရင်တောင် ဒီနည်းက Error မတက်ဘဲ Token ဝင်သွားနိုင်ပါတယ်)
-os.environ['HF_TOKEN'] = MY_TOKEN
-os.environ['HUGGING_FACE_HUB_TOKEN'] = MY_TOKEN
+# *** Token ကို ဒီနေရာမှာ ပြန်ထည့်ပါ ***
+MY_TOKEN = "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" # သင့် Token အမှန်
 
 SPACE_ID = "r3gm/AICoverGen"
 
@@ -36,25 +31,26 @@ def get_valid_client():
     max_retries = 5
     for i in range(max_retries):
         try:
-            print(f"Connecting... (Attempt {i+1})")
+            print(f"Connecting with Token... (Attempt {i+1})")
             
-            # *** ပြင်ဆင်ချက် ***
-            # hf_token=... ကို ဖြုတ်လိုက်ပြီ (Error မတက်တော့ဘူး)
-            # os.environ ထဲက Token ကို သူဘာသာ ယူသုံးပါလိမ့်မယ်
-            client = Client(SPACE_ID)
+            # *** hf_token ကို ပြန်ထည့်ပါ (Cache ရှင်းပြီးရင် ရပါပြီ) ***
+            client = Client(SPACE_ID, hf_token=MY_TOKEN)
             
             try:
-                result = client.predict(api_name="/update_models_list")
-                if "choices" in str(result) and "[]" not in str(result):
-                    print("Connected and Models found!")
-                    return client
-            except:
-                pass
+                # API Name တွေ ရှိမရှိ စစ်ဆေးမယ်
+                client.predict(api_name="/update_models_list")
+                print("Connected successfully!")
+                return client
+            except Exception as e:
+                print(f"Connected but verification failed: {e}")
+                
         except Exception as e:
             print(f"Connection failed: {e}")
+            
         time.sleep(5)
     
-    return Client(SPACE_ID)
+    # နောက်ဆုံးအနေနဲ့ Token နဲ့ပဲ ပြန်ပို့မယ်
+    return Client(SPACE_ID, hf_token=MY_TOKEN)
 
 @app.route('/generate', methods=['POST'])
 def generate_voice():
@@ -67,29 +63,31 @@ def generate_voice():
 
         print(f"=== Processing {model_name} ===")
 
-        # Edge-TTS
+        # 1. TTS
         tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
         asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
 
-        # Client Check
+        # 2. Client Connection
         client = get_valid_client()
 
-        # Download
+        # 3. Download
         if model_name in MODEL_URLS:
             print(f"Downloading {model_name}...")
             try:
+                # Token ပါမှ Download API ကို သုံးခွင့်ရမှာပါ
                 client.predict(
                     MODEL_URLS[model_name],
                     model_name,
                     api_name="/download_model"
                 )
                 client.predict(api_name="/update_models_list")
-                # Reconnect
-                client = Client(SPACE_ID)
+                
+                # Reconnect to refresh list
+                client = Client(SPACE_ID, hf_token=MY_TOKEN)
             except Exception as e:
-                print(f"Download warning: {e}")
+                print(f"Download Error: {e}")
 
-        # Voice Conversion
+        # 4. Conversion
         print("Converting Voice...")
         result_path = client.predict(
             song_input=handle_file(tts_path),
