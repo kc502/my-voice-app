@@ -23,7 +23,7 @@ MODEL_URLS = {
 }
 
 # *** Token ကို ဒီနေရာမှာ ပြန်ထည့်ပါ ***
-MY_TOKEN = "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" # သင့် Token အမှန်
+MY_TOKEN = "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" # သင့် Token အမှန်
 
 SPACE_ID = "r3gm/AICoverGen"
 
