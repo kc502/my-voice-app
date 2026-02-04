@@ -52,7 +52,7 @@ def generate_voice():
         
         result_path = client.predict(
             song_input=handle_file(tts_path),
-            voice_model="DaveGahan",  # Space ထဲက ကြိုက်တဲ့ Model နာမည် ပြောင်းထည့်နိုင်ပါတယ်
+            voice_model="Ben 10",  # Space ထဲက ကြိုက်တဲ့ Model နာမည် ပြောင်းထည့်နိုင်ပါတယ်
             pitch_change=0,           # 0 = ပုံမှန်၊ 12 = မိန်းမသံဘက်သွားမယ်
             keep_files=False,
             is_webui=1,
