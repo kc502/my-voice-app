@@ -24,7 +24,7 @@ MODEL_URLS = {
 
 # *** ဒီနေရာမှာ Token ထည့်ပါ (အရေးကြီးဆုံး) ***
 # "hf_xxxx..." နေရာမှာ သင် Copy ကူးလာတဲ့ Token ကို ထည့်ပါ
-HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
+HF_TOKEN = "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" 
 
 SPACE_ID = "r3gm/AICoverGen"
 
