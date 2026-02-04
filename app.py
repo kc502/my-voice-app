@@ -22,38 +22,39 @@ MODEL_URLS = {
     "Black Panther": "https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip"
 }
 
-# *** ဒီနေရာမှာ Token ထည့်ပါ (အရေးကြီးဆုံး) ***
-# "hf_xxxx..." နေရာမှာ သင် Copy ကူးလာတဲ့ Token ကို ထည့်ပါ
-HF_TOKEN = "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" 
+# ၁. Token ကို ဒီမှာထည့်ပါ (hf_... နဲ့စတာ)
+MY_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# ၂. Environment Variable ထဲကို Token ထည့်လိုက်မယ်
+# (Library အဟောင်းဖြစ်နေရင်တောင် ဒီနည်းက Error မတက်ဘဲ Token ဝင်သွားနိုင်ပါတယ်)
+os.environ['HF_TOKEN'] = MY_TOKEN
+os.environ['HUGGING_FACE_HUB_TOKEN'] = MY_TOKEN
 
 SPACE_ID = "r3gm/AICoverGen"
 
 def get_valid_client():
-    """Token အသုံးပြု၍ Client ချိတ်ဆက်ခြင်း"""
     max_retries = 5
     for i in range(max_retries):
         try:
-            print(f"Connecting with Token... (Attempt {i+1}/{max_retries})")
+            print(f"Connecting... (Attempt {i+1})")
             
-            # *** hf_token ထည့်လိုက်မှ Quota တိုးမှာပါ ***
-            client = Client(SPACE_ID, hf_token=HF_TOKEN)
+            # *** ပြင်ဆင်ချက် ***
+            # hf_token=... ကို ဖြုတ်လိုက်ပြီ (Error မတက်တော့ဘူး)
+            # os.environ ထဲက Token ကို သူဘာသာ ယူသုံးပါလိမ့်မယ်
+            client = Client(SPACE_ID)
             
             try:
                 result = client.predict(api_name="/update_models_list")
                 if "choices" in str(result) and "[]" not in str(result):
                     print("Connected and Models found!")
                     return client
-                else:
-                    print("Connected but List empty. Retrying...")
             except:
-                print("Checking list failed. Retrying...")
-                
+                pass
         except Exception as e:
             print(f"Connection failed: {e}")
-        
         time.sleep(5)
     
-    return Client(SPACE_ID, hf_token=HF_TOKEN)
+    return Client(SPACE_ID)
 
 @app.route('/generate', methods=['POST'])
 def generate_voice():
@@ -64,19 +65,18 @@ def generate_voice():
         
         if not text: return jsonify({"error": "စာရိုက်ပါ"}), 400
 
-        print(f"=== Starting Process for {model_name} ===")
+        print(f"=== Processing {model_name} ===")
 
-        # ၁. Edge-TTS
+        # Edge-TTS
         tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
         asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
-        print("1. Edge-TTS Done.")
 
-        # ၂. Smart Client (Token ပါသည်)
+        # Client Check
         client = get_valid_client()
 
-        # ၃. Download Logic
+        # Download
         if model_name in MODEL_URLS:
-            print(f"2. Downloading Model: {model_name}...")
+            print(f"Downloading {model_name}...")
             try:
                 client.predict(
                     MODEL_URLS[model_name],
@@ -84,14 +84,13 @@ def generate_voice():
                     api_name="/download_model"
                 )
                 client.predict(api_name="/update_models_list")
-                # Reload Client to see new models
-                client = Client(SPACE_ID, hf_token=HF_TOKEN)
-                
+                # Reconnect
+                client = Client(SPACE_ID)
             except Exception as e:
                 print(f"Download warning: {e}")
 
-        # ၄. Voice Conversion
-        print("3. Converting Voice...")
+        # Voice Conversion
+        print("Converting Voice...")
         result_path = client.predict(
             song_input=handle_file(tts_path),
             voice_model=model_name,
