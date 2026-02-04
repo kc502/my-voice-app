@@ -1,5 +1,5 @@
 flask
 flask-cors
 edge-tts
-gradio_client>=1.3.0
+gradio_client==1.3.0
 gunicorn
