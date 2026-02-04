@@ -1,90 +1,72 @@
-# app.py အပေါ်ဆုံးနားမှာ ဒါတွေပါမပါ စစ်ပါ (မပါရင် ထပ်ထည့်ပါ)
+import os
+import asyncio
+import edge_tts
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from gradio_client import Client, handle_file
-import edge_tts
-import asyncio
-import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Client ကို Global အနေနဲ့ တစ်ခါတည်း ကြေညာထားတာ ပိုမြန်ပါတယ်
-# (ဒါပေမဲ့ Error တက်ရင် ပြန်ချိတ်ဖို့ try-except ခံထားသင့်ပါတယ်)
-try:
-    hf_client = Client("r3gm/AICoverGen")
-except:
-    print("Cannot connect to Hugging Face initially.")
-    hf_client = None
+# ယာယီဖိုင်များ သိမ်းရန်
+TEMP_DIR = "/tmp"
+if not os.path.exists(TEMP_DIR):
+    os.makedirs(TEMP_DIR)
 
-# --- အသစ်ထပ်ထည့်ရမည့်အပိုင်း (Model List ယူရန်) ---
-@app.route('/models', methods=['GET'])
-def get_models():
-    global hf_client
-    try:
-        if hf_client is None:
-             hf_client = Client("r3gm/AICoverGen")
-        
-        # Space ထဲက Model စာရင်း update လုပ်ပေးတဲ့ API ကို ခေါ်လိုက်တာပါ
-        # ဒီကောင်က list ပြန်ပေးလေ့ရှိပါတယ်
-        models_result = hf_client.predict(api_name="/update_models_list")
-        
-        # Gradio API က return ပြန်တာ ပုံစံအမျိုးမျိုးရှိနိုင်လို့ list ကို သေချာဆွဲထုတ်ပါမယ်
-        # များသောအားဖြင့် Tuple (dropdown_update, list, ...) ပုံစံနဲ့ လာတတ်ပါတယ်
-        # ဒါကြောင့် models_result တွေကို စစ်ပြီး List ဖြစ်တဲ့ကောင်ကို ယူပါမယ်
-        
-        valid_models = []
-        
-        # ရလာတဲ့ Result ကို Print ထုတ်ကြည့်မယ် (Logs မှာ စစ်ဖို့)
-        print(f"Raw Models Result: {models_result}")
+# --- သင်ပေးထားသော Model Links များ ---
+MODEL_URLS = {
+    "Tom Holland": "https://huggingface.co/TJKAI/TomHolland/resolve/main/TomHolland.zip",
+    "Kurt Cobain": "https://huggingface.co/Florstie/Kurt_Cobain_byFlorst/resolve/main/Kurt_Florst.zip",
+    "Bratishkinoff": "https://huggingface.co/JHmashups/Bratishkinoff/resolve/main/bratishkin.zip",
+    "MaeASMR": "https://huggingface.co/ctian/VRC/resolve/main/MaeASMR.zip",
+    "IvanZolo2004": "https://huggingface.co/fenikkusugosuto/IvanZolo2004/resolve/main/ivanZolo.zip",
+    "Black Panther": "https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip"
+}
 
-        if isinstance(models_result, (list, tuple)):
-            for item in models_result:
-                # Gradio Dropdown update object တွေက Dictionary ပုံစံနဲ့ choices ပါတတ်တယ်
-                if isinstance(item, dict) and 'choices' in item:
-                    valid_models = item['choices']
-                    break
-                # တခါတလေ List အစစ်အတိုင်း ပါလာတတ်တယ်
-                elif isinstance(item, list) and len(item) > 0 and isinstance(item[0], str):
-                    valid_models = item
-                    break
-        
-        # ဘာမှရှာမတွေ့ရင် Default စာရင်းတစ်ခု ပေးလိုက်မယ် (Error မတက်အောင်)
-        if not valid_models:
-             valid_models = ['Ben 10', 'Spongebob', 'Doraemon'] # Fallback
-
-        return jsonify({"models": valid_models})
-
-    except Exception as e:
-        print(f"Model fetch error: {e}")
-        return jsonify({"error": str(e), "models": ["Error Fetching Models"]}), 500
-
-# --- အသံထုတ်သည့်အပိုင်း (Generate) ---
 @app.route('/generate', methods=['POST'])
 def generate_voice():
-    global hf_client
     try:
         data = request.json
         text = data.get("text", "")
-        # Frontend က ရွေးလိုက်တဲ့ Model နာမည်ကို လက်ခံယူမယ်
-        selected_model = data.get("model", "Ben 10") # မပါရင် Default ယူမယ်
+        # Frontend မှ ပို့လိုက်သော Model နာမည် (ဥပမာ "Tom Holland")
+        model_name = data.get("model", "Tom Holland") 
         
         if not text:
-            return jsonify({"error": "No text provided"}), 400
+            return jsonify({"error": "ကျေးဇူးပြု၍ စာရိုက်ထည့်ပါ"}), 400
 
-        # ၁. Edge-TTS (မြန်မာအသံ)
-        voice = "my-MM-ThihaNeural"
-        tts_path = "/tmp/temp_tts.mp3"
-        asyncio.run(edge_tts.Communicate(text, voice).save(tts_path))
+        print(f"Processing: {text} | Voice: {model_name}")
 
-        # ၂. RVC (Voice Conversion)
-        if hf_client is None: hf_client = Client("r3gm/AICoverGen")
+        # ၁. Edge-TTS (မြန်မာအသံ ဖန်တီးခြင်း)
+        tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
+        # Thiha (ကျား) အသံကို အဓိကထားသုံးပါမည်
+        asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
+        print("Edge-TTS generated.")
+
+        # ၂. RVC Client ချိတ်ဆက်ခြင်း
+        # Public Space ကိုပဲ သုံးပါမည်
+        client = Client("r3gm/AICoverGen")
         
-        print(f"Using Model: {selected_model}")
-        
-        result_path = hf_client.predict(
+        # ၃. Model Download လုပ်ခြင်း (အရေးကြီးဆုံးအဆင့်)
+        # User ရွေးလိုက်တဲ့ Model က ကျွန်တော်တို့ စာရင်းထဲမှာ ရှိရင် Download အရင်လုပ်ခိုင်းမယ်
+        if model_name in MODEL_URLS:
+            print(f"Downloading Model: {model_name}...")
+            try:
+                # Hugging Face Space သို့ Model URL ပို့ပြီး Download ခိုင်းခြင်း
+                client.predict(
+                    MODEL_URLS[model_name], # ZIP URL
+                    model_name,             # Name
+                    api_name="/download_model"
+                )
+                print("Model download command sent.")
+            except Exception as e:
+                # တကယ်လို့ Model က ရှိပြီးသားဆိုရင် Error တက်နိုင်တယ်၊ ဒါကို ကျော်သွားမယ်
+                print(f"Download warning (might already exist): {e}")
+
+        # ၄. အသံပြောင်းခြင်း (Voice Conversion)
+        print("Converting voice with RVC...")
+        result_path = client.predict(
             song_input=handle_file(tts_path),
-            voice_model=selected_model, # ဒီနေရာမှာ User ရွေးတာ ထည့်မယ်
+            voice_model=model_name, # Download လုပ်ထားတဲ့ နာမည်အတိုင်း သုံးမယ်
             pitch_change=0,
             keep_files=False,
             is_webui=1,
@@ -108,11 +90,14 @@ def generate_voice():
             api_name="/song_cover_pipeline"
         )
         
+        # ၅. ရလာတဲ့ အသံဖိုင်ကို ပြန်ပို့ခြင်း
         return send_file(result_path, mimetype="audio/mpeg")
 
     except Exception as e:
+        print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Render Port Configuration
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
