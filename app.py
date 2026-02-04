@@ -8,12 +8,10 @@ from gradio_client import Client, handle_file
 app = Flask(__name__)
 CORS(app)
 
-# ယာယီဖိုင်များ သိမ်းရန်
 TEMP_DIR = "/tmp"
 if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
 
-# --- သင်ပေးထားသော Model Links များ ---
 MODEL_URLS = {
     "Tom Holland": "https://huggingface.co/TJKAI/TomHolland/resolve/main/TomHolland.zip",
     "Kurt Cobain": "https://huggingface.co/Florstie/Kurt_Cobain_byFlorst/resolve/main/Kurt_Florst.zip",
@@ -28,45 +26,42 @@ def generate_voice():
     try:
         data = request.json
         text = data.get("text", "")
-        # Frontend မှ ပို့လိုက်သော Model နာမည် (ဥပမာ "Tom Holland")
-        model_name = data.get("model", "Tom Holland") 
+        model_name = data.get("model", "IvanZolo2004") 
         
-        if not text:
-            return jsonify({"error": "ကျေးဇူးပြု၍ စာရိုက်ထည့်ပါ"}), 400
+        if not text: return jsonify({"error": "စာရိုက်ပါ"}), 400
 
-        print(f"Processing: {text} | Voice: {model_name}")
+        print(f"Processing: {model_name}")
 
-        # ၁. Edge-TTS (မြန်မာအသံ ဖန်တီးခြင်း)
+        # ၁. Edge-TTS
         tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
-        # Thiha (ကျား) အသံကို အဓိကထားသုံးပါမည်
         asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
-        print("Edge-TTS generated.")
 
-        # ၂. RVC Client ချိတ်ဆက်ခြင်း
-        # Public Space ကိုပဲ သုံးပါမည်
-        client = Client("r3gm/AICoverGen")
+        # ၂. Client ပြောင်းထားသည် (SocialAI)
+        client = Client("SocialAI/AICoverGen")
         
-        # ၃. Model Download လုပ်ခြင်း (အရေးကြီးဆုံးအဆင့်)
-        # User ရွေးလိုက်တဲ့ Model က ကျွန်တော်တို့ စာရင်းထဲမှာ ရှိရင် Download အရင်လုပ်ခိုင်းမယ်
+        # ၃. Download လုပ်ခြင်း
         if model_name in MODEL_URLS:
-            print(f"Downloading Model: {model_name}...")
+            print(f"Downloading {model_name}...")
             try:
-                # Hugging Face Space သို့ Model URL ပို့ပြီး Download ခိုင်းခြင်း
                 client.predict(
-                    MODEL_URLS[model_name], # ZIP URL
-                    model_name,             # Name
+                    MODEL_URLS[model_name],
+                    model_name,
                     api_name="/download_model"
                 )
-                print("Model download command sent.")
+                
+                # *** အသစ်ထည့်ထားသည် ***
+                # Download ပြီးရင် List ကို Refresh လုပ်ခိုင်းမှ ရပါမယ်
+                client.predict(api_name="/update_models_list")
+                print("Model list updated.")
+                
             except Exception as e:
-                # တကယ်လို့ Model က ရှိပြီးသားဆိုရင် Error တက်နိုင်တယ်၊ ဒါကို ကျော်သွားမယ်
-                print(f"Download warning (might already exist): {e}")
+                print(f"Download Error (Ignored if exists): {e}")
 
-        # ၄. အသံပြောင်းခြင်း (Voice Conversion)
-        print("Converting voice with RVC...")
+        # ၄. Generate
+        print("Converting...")
         result_path = client.predict(
             song_input=handle_file(tts_path),
-            voice_model=model_name, # Download လုပ်ထားတဲ့ နာမည်အတိုင်း သုံးမယ်
+            voice_model=model_name,
             pitch_change=0,
             keep_files=False,
             is_webui=1,
@@ -90,7 +85,6 @@ def generate_voice():
             api_name="/song_cover_pipeline"
         )
         
-        # ၅. ရလာတဲ့ အသံဖိုင်ကို ပြန်ပို့ခြင်း
         return send_file(result_path, mimetype="audio/mpeg")
 
     except Exception as e:
@@ -98,6 +92,5 @@ def generate_voice():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Render Port Configuration
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
