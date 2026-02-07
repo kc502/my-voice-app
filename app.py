@@ -1,99 +1,40 @@
-import os
-import asyncio
+import gradio as gr
 import edge_tts
-import time
-from flask import Flask, request, send_file, jsonify
-from flask_cors import CORS
+import asyncio
+import os
 from gradio_client import Client, handle_file
 
-app = Flask(__name__)
-CORS(app)
+# --- Configuration ---
+# အစ်ကို့ရဲ့ AICoverGen Link (၇၂ နာရီပြည့်ရင် လဲပေးရမယ်)
+RVC_API_URL = "https://d60218d453d601423b.gradio.live/" 
 
-TEMP_DIR = "/tmp"
-if not os.path.exists(TEMP_DIR):
-    os.makedirs(TEMP_DIR)
+# RVC Model နာမည်များ (API ဘက်မှာ Download လုပ်ပြီးသား ဖြစ်ရမယ်)
+AVAILABLE_MODELS = ["Ado", "Tom Holland", "LiSA", "Kurt Cobain"] 
 
-MODEL_URLS = {
-    "Tom Holland": "https://huggingface.co/TJKAI/TomHolland/resolve/main/TomHolland.zip",
-    "Kurt Cobain": "https://huggingface.co/Florstie/Kurt_Cobain_byFlorst/resolve/main/Kurt_Florst.zip",
-    "Bratishkinoff": "https://huggingface.co/JHmashups/Bratishkinoff/resolve/main/bratishkin.zip",
-    "MaeASMR": "https://huggingface.co/ctian/VRC/resolve/main/MaeASMR.zip",
-    "IvanZolo2004": "https://huggingface.co/fenikkusugosuto/IvanZolo2004/resolve/main/ivanZolo.zip",
-    "Black Panther": "https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip"
-}
-
-# *** Token ကို ဒီနေရာမှာ ပြန်ထည့်ပါ ***
-MY_TOKEN = "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" # သင့် Token အမှန်
-
-SPACE_ID = "r3gm/AICoverGen"
-
-def get_valid_client():
-    max_retries = 5
-    for i in range(max_retries):
-        try:
-            print(f"Connecting with Token... (Attempt {i+1})")
-            
-            # *** hf_token ကို ပြန်ထည့်ပါ (Cache ရှင်းပြီးရင် ရပါပြီ) ***
-            client = Client(SPACE_ID, hf_token=MY_TOKEN)
-            
-            try:
-                # API Name တွေ ရှိမရှိ စစ်ဆေးမယ်
-                client.predict(api_name="/update_models_list")
-                print("Connected successfully!")
-                return client
-            except Exception as e:
-                print(f"Connected but verification failed: {e}")
-                
-        except Exception as e:
-            print(f"Connection failed: {e}")
-            
-        time.sleep(5)
+async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
+    output_file = "temp_tts.mp3"
     
-    # နောက်ဆုံးအနေနဲ့ Token နဲ့ပဲ ပြန်ပို့မယ်
-    return Client(SPACE_ID, hf_token=MY_TOKEN)
-
-@app.route('/generate', methods=['POST'])
-def generate_voice():
+    # 1. Edge TTS ဖြင့် စာမှ အသံပြောင်းခြင်း
     try:
-        data = request.json
-        text = data.get("text", "")
-        model_name = data.get("model", "Tom Holland") 
+        print(f"Generating TTS for: {text}")
+        communicate = edge_tts.Communicate(text, tts_voice)
+        await communicate.save(output_file)
+    except Exception as e:
+        return None, f"TTS Error: {str(e)}"
+
+    # 2. RVC API သို့ ပို့ခြင်း
+    try:
+        print(f"Converting with RVC Model: {model_name}")
+        client = Client(RVC_API_URL)
         
-        if not text: return jsonify({"error": "စာရိုက်ပါ"}), 400
-
-        print(f"=== Processing {model_name} ===")
-
-        # 1. TTS
-        tts_path = os.path.join(TEMP_DIR, "temp_tts.mp3")
-        asyncio.run(edge_tts.Communicate(text, "my-MM-ThihaNeural").save(tts_path))
-
-        # 2. Client Connection
-        client = get_valid_client()
-
-        # 3. Download
-        if model_name in MODEL_URLS:
-            print(f"Downloading {model_name}...")
-            try:
-                # Token ပါမှ Download API ကို သုံးခွင့်ရမှာပါ
-                client.predict(
-                    MODEL_URLS[model_name],
-                    model_name,
-                    api_name="/download_model"
-                )
-                client.predict(api_name="/update_models_list")
-                
-                # Reconnect to refresh list
-                client = Client(SPACE_ID, hf_token=MY_TOKEN)
-            except Exception as e:
-                print(f"Download Error: {e}")
-
-        # 4. Conversion
-        print("Converting Voice...")
-        result_path = client.predict(
-            song_input=handle_file(tts_path),
+        # Model List Update လုပ် (မလုပ်ရင် တခါတလေ error တက်လို့)
+        client.predict(api_name="/update_models_list")
+        
+        result = client.predict(
+            song_input=handle_file(output_file),
             voice_model=model_name,
-            pitch_change=0,
-            keep_files=False,
+            pitch_change=pitch_change,
+            keep_files=True,
             is_webui=1,
             main_gain=0,
             backup_gain=0,
@@ -110,6 +51,45 @@ def generate_voice():
             reverb_dry=0.8,
             reverb_damping=0.7,
             output_format="mp3",
+            extra_denoise=True,
+            steps=1,
+            api_name="/song_cover_pipeline"
+        )
+        return result, "Success"
+        
+    except Exception as e:
+        return None, f"RVC Error: {str(e)}"
+
+# --- Gradio UI ---
+with gr.Blocks(title="EdgeTTS + RVC WebUI") as demo:
+    gr.Markdown("# 🎤 EdgeTTS to RVC Converter")
+    
+    with gr.Row():
+        with gr.Column():
+            text_input = gr.Textbox(label="ပြောစေချင်သော စာသား (Text)", placeholder="မင်္ဂလာပါ...")
+            model_drop = gr.Dropdown(choices=AVAILABLE_MODELS, label="RVC Model ရွေးရန်", value="Ado")
+            voice_drop = gr.Dropdown(
+                choices=["my-MM-KhineVoiceNeural", "en-US-AnaNeural"], 
+                label="TTS မူရင်းအသံ (Language)", 
+                value="my-MM-KhineVoiceNeural"
+            )
+            pitch_slider = gr.Slider(minimum=-12, maximum=12, step=1, label="Pitch Change", value=0)
+            btn = gr.Button("Generate Voice", variant="primary")
+        
+        with gr.Column():
+            audio_output = gr.Audio(label="ရလာသော အသံ (Result)")
+            status_output = gr.Label(label="Status")
+
+    # Button Click Event
+    btn.click(
+        fn=process_tts_rvc, 
+        inputs=[text_input, model_drop, pitch_slider, voice_drop], 
+        outputs=[audio_output, status_output]
+    )
+
+# Run App
+if __name__ == "__main__":
+    demo.queue().launch()
             extra_denoise=True,
             steps=1,
             api_name="/song_cover_pipeline"
