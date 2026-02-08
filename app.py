@@ -11,7 +11,7 @@ AVAILABLE_MODELS = ["Ado", "Tom Holland", "LiSA", "Kurt Cobain"]
 async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
     output_file = "temp_tts.mp3"
     
-    # 1. Edge TTS 
+    # 1. Edge TTS Generation
     try:
         print(f"Generating TTS for: {text}")
         communicate = edge_tts.Communicate(text, tts_voice)
@@ -19,12 +19,12 @@ async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
     except Exception as e:
         return None, f"TTS Error: {str(e)}"
 
-    # 2. RVC API
+    # 2. RVC Conversion
     try:
         print(f"Converting with RVC Model: {model_name}")
         client = Client(RVC_API_URL)
         
-        # Update models list
+        # Refresh models
         client.predict(api_name="/update_models_list")
         
         result = client.predict(
@@ -57,7 +57,7 @@ async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
     except Exception as e:
         return None, f"RVC Error: {str(e)}"
 
-# --- Gradio UI ---
+# --- UI Layout ---
 with gr.Blocks(title="EdgeTTS + RVC WebUI") as demo:
     gr.Markdown("# 🎤 EdgeTTS to RVC Converter")
     
@@ -75,6 +75,6 @@ with gr.Blocks(title="EdgeTTS + RVC WebUI") as demo:
 
     btn.click(fn=process_tts_rvc, inputs=[text_input, model_drop, pitch_slider, voice_drop], outputs=[audio_output, status_output])
 
-# Render အတွက် Port Configuration ပြင်ထားသည်
+# Render Port Configuration
 if __name__ == "__main__":
     demo.queue().launch(server_name="0.0.0.0", server_port=7860)
