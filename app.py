@@ -5,7 +5,7 @@ import os
 from gradio_client import Client, handle_file
 
 # --- Configuration ---
-RVC_API_URL = "https://d60218d453d601423b.gradio.live/" 
+RVC_API_URL = "https://c50db4f943a74ca210.gradio.live/" 
 AVAILABLE_MODELS = ["Ado", "Tom Holland", "LiSA", "Kurt Cobain"] 
 
 async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
