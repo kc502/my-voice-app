@@ -1,34 +1,53 @@
 import gradio as gr
 import edge_tts
-import asyncio
 import os
+import asyncio
 from gradio_client import Client, handle_file
 
 # --- Configuration ---
-RVC_API_URL = "https://c50db4f943a74ca210.gradio.live/" 
+# အစ်ကို့ရဲ့ RVC Link (Link သေရင် ဒီနေရာမှာ အသစ်လာထည့်ပေးရမယ်)
+RVC_API_URL = "https://d60218d453d601423b.gradio.live/" 
+
 AVAILABLE_MODELS = ["Ado", "Tom Holland", "LiSA", "Kurt Cobain"] 
 
-async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
-    output_file = "temp_tts.mp3"
+async def process_automation(text, model_name, pitch_change, tts_voice):
+    # ၁။ ဖိုင်သိမ်းမည့် နေရာသတ်မှတ် (Render ပေါ်တွင် error မတက်စေရန်)
+    output_file = "tts_generated.mp3"
     
-    # 1. Edge TTS Generation
+    # အဟောင်းရှိရင် အရင်ဖျက်မယ်
+    if os.path.exists(output_file):
+        os.remove(output_file)
+
     try:
-        print(f"Generating TTS for: {text}")
+        print(f"Step 1: Generating TTS for '{text}'...")
+        
+        # Edge TTS အသံထုတ်ခြင်း
         communicate = edge_tts.Communicate(text, tts_voice)
         await communicate.save(output_file)
-    except Exception as e:
-        return None, f"TTS Error: {str(e)}"
+        
+        # ဖိုင်တကယ်ထွက်မထွက် စစ်ဆေးခြင်း (Crucial Step)
+        if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            return None, "❌ Error: Edge TTS က အသံဖိုင်မထုတ်ပေးနိုင်ပါ။ (Internet connection သို့မဟုတ် Text ကို စစ်ပါ)"
+            
+        print(f"Step 1 Complete: Audio file created ({os.path.getsize(output_file)} bytes).")
 
-    # 2. RVC Conversion
+    except Exception as e:
+        return None, f"TTS Generation Error: {str(e)}"
+
+    # ၂။ RVC Server သို့ လှမ်းချိတ်ပြီး အသံပြောင်းခြင်း
     try:
-        print(f"Converting with RVC Model: {model_name}")
+        print(f"Step 2: Sending to RVC ({model_name})...")
         client = Client(RVC_API_URL)
         
-        # Refresh models
-        client.predict(api_name="/update_models_list")
-        
+        # Model List ကို refresh လုပ်ပါ
+        try:
+            client.predict(api_name="/update_models_list")
+        except:
+            pass # တချို့ version တွေမှာ error တက်တတ်လို့ ကျော်ပါမယ်
+
+        # အသံပြောင်းပါ (Automation)
         result = client.predict(
-            song_input=handle_file(output_file),
+            song_input=handle_file(output_file), # ထွက်လာတဲ့ TTS ဖိုင်ကို ပို့မယ်
             voice_model=model_name,
             pitch_change=pitch_change,
             keep_files=True,
@@ -52,29 +71,39 @@ async def process_tts_rvc(text, model_name, pitch_change, tts_voice):
             steps=1,
             api_name="/song_cover_pipeline"
         )
-        return result, "Success"
+        
+        print("Step 2 Complete: Automation Success!")
+        return result, "✅ Automation Success!"
         
     except Exception as e:
-        return None, f"RVC Error: {str(e)}"
+        return None, f"RVC Connection Error: {str(e)}"
 
-# --- UI Layout ---
-with gr.Blocks(title="EdgeTTS + RVC WebUI") as demo:
-    gr.Markdown("# 🎤 EdgeTTS to RVC Converter")
+# --- Gradio Interface ---
+with gr.Blocks(title="AI Voice Automation") as demo:
+    gr.Markdown("# 🤖 Auto TTS + RVC Converter")
+    gr.Markdown("စာရိုက်ထည့်လိုက်တာနဲ့ အသံထွက်ပြီး AI Voice ပြောင်းပေးမည့် Automation စနစ်")
     
     with gr.Row():
         with gr.Column():
-            text_input = gr.Textbox(label="Text Input", placeholder="စာရိုက်ပါ...")
-            model_drop = gr.Dropdown(choices=AVAILABLE_MODELS, label="RVC Model", value="Ado")
-            voice_drop = gr.Dropdown(choices=["my-MM-KhineVoiceNeural", "en-US-AnaNeural"], label="TTS Voice", value="my-MM-KhineVoiceNeural")
-            pitch_slider = gr.Slider(minimum=-12, maximum=12, step=1, label="Pitch", value=0)
-            btn = gr.Button("Generate", variant="primary")
+            text_input = gr.Textbox(label="စာရိုက်ရန် (Text Input)", placeholder="မင်္ဂလာပါ...", lines=3)
+            with gr.Row():
+                model_drop = gr.Dropdown(choices=AVAILABLE_MODELS, label="AI Model", value="Ado")
+                voice_drop = gr.Dropdown(choices=["my-MM-KhineVoiceNeural", "en-US-AnaNeural"], label="TTS Language", value="my-MM-KhineVoiceNeural")
+            
+            pitch_slider = gr.Slider(minimum=-12, maximum=12, step=1, label="Pitch Change", value=0)
+            btn = gr.Button("🚀 Start Automation", variant="primary")
         
         with gr.Column():
-            audio_output = gr.Audio(label="Result")
-            status_output = gr.Label(label="Status")
+            audio_output = gr.Audio(label="ရလာသော အသံ (Final Output)")
+            status_output = gr.Label(label="Status Log")
 
-    btn.click(fn=process_tts_rvc, inputs=[text_input, model_drop, pitch_slider, voice_drop], outputs=[audio_output, status_output])
+    # Button နှိပ်ရင် အလုပ်စမယ်
+    btn.click(
+        fn=process_automation, 
+        inputs=[text_input, model_drop, pitch_slider, voice_drop], 
+        outputs=[audio_output, status_output]
+    )
 
-# Render Port Configuration
+# Render Configuration
 if __name__ == "__main__":
     demo.queue().launch(server_name="0.0.0.0", server_port=7860)
