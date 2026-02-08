@@ -1,5 +1,4 @@
-flask
-flask-cors
+gradio
 edge-tts
-gradio_client==1.3.0
-gunicorn
+gradio_client
+
