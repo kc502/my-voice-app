@@ -7,7 +7,6 @@ from gradio_client import Client, handle_file
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# Nano Banana ရဲ့ Space Link အမှန်
 HF_SPACE_NAME = "kochit/myanmar-rvc-tts"
 
 @app.get("/")
@@ -25,19 +24,28 @@ def generate_voice(
         print(f"Connecting to Space: {HF_SPACE_NAME}...")
         client = Client(HF_SPACE_NAME)
         
-        # Screenshot ထဲကအတိုင်း Parameter တွေကို အတိအကျ ပို့ပါမယ်
+        # Hugging Face သို့ အလုပ်ခိုင်းခြင်း
         result = client.predict(
-            text,           # Text Input
-            tts_voice,      # 'Nilar (Female)' or 'Thiha (Male)'
-            rvc_model,      # 'Black Panther', 'Tom Holland', etc.
-            pitch,          # Number (e.g. 0)
-            api_name="/convert_voice"  # Screenshot ထဲက နာမည်အမှန်
+            text,           
+            tts_voice,      
+            rvc_model,      
+            pitch,          
+            api_name="/convert_voice"
         )
         
-        # Result က (filepath, status) ပုံစံပြန်လာလို့ [0] ကို ယူရပါမယ်
+        # result[0] = အသံဖိုင်လမ်းကြောင်း
+        # result[1] = Status Message (Success သို့မဟုတ် Error စာသား)
         audio_path = result[0]
+        status_msg = result[1]
         
-        # ရလာတဲ့ အသံဖိုင်ကို ဖတ်ပြီး Web App သို့ ပြန်ပို့ခြင်း
+        # =======================================================
+        # ပြင်ဆင်ချက်: အသံဖိုင် မပါလာရင် Error စာသားကို ပြန်ပို့မည်
+        # =======================================================
+        if audio_path is None:
+            print(f"HF Returned Error: {status_msg}")
+            return Response(content=f"Hugging Face Error: {status_msg}", status_code=500)
+        
+        # အသံဖိုင် ပါလာမှ ဖွင့်မည်
         with open(audio_path, "rb") as f:
             audio_data = f.read()
             
@@ -45,7 +53,7 @@ def generate_voice(
 
     except Exception as e:
         print(f"Error: {e}")
-        return Response(content=f"Error: {str(e)}", status_code=500)
+        return Response(content=f"System Error: {str(e)}", status_code=500)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
