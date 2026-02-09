@@ -1,7 +1,5 @@
 import os
 import uvicorn
-import edge_tts
-import shutil
 from fastapi import FastAPI, Request, Form, Response
 from fastapi.templating import Jinja2Templates
 from gradio_client import Client, handle_file
@@ -9,83 +7,50 @@ from gradio_client import Client, handle_file
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# ယာယီဖိုင်များ သိမ်းရန်
-TEMP_DIR = "/tmp"
-os.makedirs(TEMP_DIR, exist_ok=True)
-
-# -------------------------------------------------------
-# အရင်က ဒီနေရာမှာ Client(...) ရေးထားလို့ Error တက်တာပါ
-# အခု ဒီနေရာမှာ ဘာမှ မရေးဘဲ ကျော်သွားပါမယ်
-# -------------------------------------------------------
+# ==========================================
+# Hugging Face Space ကို လှမ်းချိတ်ခြင်း
+# (Nano Banana ရဲ့ Space နာမည်အမှန် ဖြစ်ရပါမယ်)
+# ==========================================
+HF_SPACE_NAME = "kochit/myannar-rvc-tts"
+client = Client(HF_SPACE_NAME)
 
 @app.get("/")
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/generate")
-async def generate_voice(
+def generate_voice(
     text: str = Form(...),
+    tts_voice: str = Form(...),  # Thiha or Nilar
+    rvc_model: str = Form(...),  # Black Panther, etc.
     pitch: int = Form(0)
 ):
     try:
-        # Step 1: Edge TTS ဖြင့် မြန်မာစာဖတ်ခြင်း
-        tts_filename = os.path.join(TEMP_DIR, "tts_input.mp3")
-        communicate = edge_tts.Communicate(text, "my-MM-NilarNeural")
-        await communicate.save(tts_filename)
-
-        # Step 2: Hugging Face သို့ လှမ်းချိတ်ခြင်း (ဒီရောက်မှ စချိတ်ပါမယ်)
-        print("Connecting to Hugging Face...")
+        print(f"Sending to Hugging Face: {text} | {tts_voice} | {rvc_model}")
         
-        # ဒီနေရာမှာမှ Client ကို ခေါ်တဲ့အတွက် App စဖွင့်ချိန်မှာ Error မတက်တော့ပါဘူး
-        hf_client = Client("r3gm/AICoverGen") 
-
-        # Step 3: အသံပြောင်းခြင်း (API Call)
-        result = hf_client.predict(
-            song_input=handle_file(tts_filename),
-            voice_model="Black Panther", 
-            pitch_change=pitch,
-            keep_files=False,
-            is_webui=1,
-            main_gain=0,
-            backup_gain=0,
-            inst_gain=0,
-            index_rate=0.5,
-            filter_radius=3,
-            rms_mix_rate=0.25,
-            f0_method="rmvpe+",
-            crepe_hop_length=128,
-            protect=0.33,
-            pitch_change_all=0,
-            reverb_rm_size=0.15,
-            reverb_wet=0.2,
-            reverb_dry=0.8,
-            reverb_damping=0.7,
-            output_format="mp3",
-            extra_denoise=True,
-            steps=1,
-            api_name="/song_cover_pipeline"
+        # Hugging Face ဆီ အမိန့်လှမ်းပေးခြင်း
+        # အစဉ်လိုက်အတိုင်း တိကျရပါမယ် (Text, TTS Voice, Model, Pitch)
+        result = client.predict(
+            text,           
+            tts_voice,      
+            rvc_model,      
+            pitch,          
+            api_name="/predict" # Hugging Face ရဲ့ Default Endpoint
         )
-
-        # Step 4: ရလာတဲ့ Result ကို ပြန်ပို့ခြင်း
-        if isinstance(result, tuple):
-             output_path = result[1]
-        else:
-             output_path = result
-
-        with open(output_path, "rb") as f:
+        
+        # result က (audio_path, message) ပုံစံနဲ့ ပြန်လာပါတယ်
+        # Audio Path (result[0]) ကို ယူပါမယ်
+        audio_path = result[0]
+        
+        # ရလာတဲ့ ဖိုင်ကို ဖတ်ပြီး Web App ဘက်ကို ပြန်ပို့ခြင်း
+        with open(audio_path, "rb") as f:
             audio_data = f.read()
-
+            
         return Response(content=audio_data, media_type="audio/mpeg")
 
     except Exception as e:
-        # Error တက်ရင် ဘာကြောင့်လဲ သိရအောင် Log ထုတ်ကြည့်မယ်
-        error_msg = str(e)
-        print(f"Error Occurred: {error_msg}")
-        
-        if "Could not fetch api info" in error_msg:
-            return Response(content="Error: Hugging Face Space (AICoverGen) သည် အိပ်ပျော်နေပါသဖြင့် နှိုးမရဖြစ်နေပါသည်။ ၅ မိနစ်ခန့်စောင့်ပြီး ပြန်စမ်းပါ (သို့) Space အသစ် ပြောင်းသုံးပါ။", status_code=500)
-            
-        return Response(content=f"Error: {error_msg}", status_code=500)
+        print(f"Error: {e}")
+        return Response(content=f"Error connecting to Hugging Face: {str(e)}", status_code=500)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
