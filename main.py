@@ -8,11 +8,9 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 # ==========================================
-# Hugging Face Space ကို လှမ်းချိတ်ခြင်း
-# (Nano Banana ရဲ့ Space နာမည်အမှန် ဖြစ်ရပါမယ်)
+# Link အမှန် (Myanmar - M တစ်လုံးတည်းဖြင့်)
 # ==========================================
-HF_SPACE_NAME = "kochit/myannar-rvc-tts"
-client = Client(HF_SPACE_NAME)
+HF_SPACE_NAME = "kochit/myanmar-rvc-tts"
 
 @app.get("/")
 def home(request: Request):
@@ -21,36 +19,39 @@ def home(request: Request):
 @app.post("/generate")
 def generate_voice(
     text: str = Form(...),
-    tts_voice: str = Form(...),  # Thiha or Nilar
-    rvc_model: str = Form(...),  # Black Panther, etc.
+    tts_voice: str = Form(...),
+    rvc_model: str = Form(...),
     pitch: int = Form(0)
 ):
     try:
-        print(f"Sending to Hugging Face: {text} | {tts_voice} | {rvc_model}")
+        print(f"Connecting to Space: {HF_SPACE_NAME}...")
         
-        # Hugging Face ဆီ အမိန့်လှမ်းပေးခြင်း
-        # အစဉ်လိုက်အတိုင်း တိကျရပါမယ် (Text, TTS Voice, Model, Pitch)
+        # Space ကို လှမ်းချိတ်ခြင်း
+        client = Client(HF_SPACE_NAME)
+        
+        # Hugging Face သို့ အလုပ်ခိုင်းခြင်း
+        # (Text, TTS Voice, RVC Model, Pitch)
         result = client.predict(
             text,           
             tts_voice,      
             rvc_model,      
             pitch,          
-            api_name="/predict" # Hugging Face ရဲ့ Default Endpoint
+            api_name="/predict"
         )
         
-        # result က (audio_path, message) ပုံစံနဲ့ ပြန်လာပါတယ်
-        # Audio Path (result[0]) ကို ယူပါမယ်
+        # အသံဖိုင်လမ်းကြောင်းကို ယူခြင်း
         audio_path = result[0]
         
-        # ရလာတဲ့ ဖိုင်ကို ဖတ်ပြီး Web App ဘက်ကို ပြန်ပို့ခြင်း
+        # ဖိုင်ကို ဖတ်ပြီး ပြန်ပို့ခြင်း
         with open(audio_path, "rb") as f:
             audio_data = f.read()
             
         return Response(content=audio_data, media_type="audio/mpeg")
 
     except Exception as e:
-        print(f"Error: {e}")
-        return Response(content=f"Error connecting to Hugging Face: {str(e)}", status_code=500)
+        error_msg = str(e)
+        print(f"Connection Error: {error_msg}")
+        return Response(content=f"Error: {error_msg}", status_code=500)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
