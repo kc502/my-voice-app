@@ -4,36 +4,19 @@ import edge_tts
 import shutil
 from fastapi import FastAPI, Request, Form, Response
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import FileResponse
 from gradio_client import Client, handle_file
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# Hugging Face Space သို့ ချိတ်ဆက်ခြင်း
-HF_CLIENT = Client("r3gm/AICoverGen")
-
 # ယာယီဖိုင်များ သိမ်းရန်
 TEMP_DIR = "/tmp"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# ==========================================
-# Startup: Black Panther Model ကို ကြိုတင်ဒေါင်းထားခြင်း
-# ==========================================
-print("Downloading Voice Model... (Please wait)")
-try:
-    # 1. Model ဒေါင်းလုဒ်ဆွဲခြင်း (Snippet အတိုင်း)
-    HF_CLIENT.predict(
-        url="https://huggingface.co/TJKAI/BlackPannther/resolve/main/BlackPanther.zip",
-        dir_name="Black Panther",
-        api_name="/download_online_model_1"
-    )
-    # 2. Model List ကို Update လုပ်ခြင်း
-    HF_CLIENT.predict(api_name="/update_models_list")
-    print("Voice Model Ready: Black Panther")
-except Exception as e:
-    print(f"Model Download Warning: {e}")
-
+# -------------------------------------------------------
+# အရင်က ဒီနေရာမှာ Client(...) ရေးထားလို့ Error တက်တာပါ
+# အခု ဒီနေရာမှာ ဘာမှ မရေးဘဲ ကျော်သွားပါမယ်
+# -------------------------------------------------------
 
 @app.get("/")
 def home(request: Request):
@@ -42,20 +25,25 @@ def home(request: Request):
 @app.post("/generate")
 async def generate_voice(
     text: str = Form(...),
-    pitch: int = Form(0) # အသံအနိမ့်အမြင့် (ယောက်ျားလေးမို့ 0 or -12 ထားပါ)
+    pitch: int = Form(0)
 ):
     try:
-        # Step 1: Edge TTS ဖြင့် မြန်မာစာဖတ်ခြင်း (Nilar)
+        # Step 1: Edge TTS ဖြင့် မြန်မာစာဖတ်ခြင်း
         tts_filename = os.path.join(TEMP_DIR, "tts_input.mp3")
         communicate = edge_tts.Communicate(text, "my-MM-NilarNeural")
         await communicate.save(tts_filename)
 
-        # Step 2: AICoverGen သို့ ပို့ပြီး အသံပြောင်းခြင်း
-        # Nano Banana ပေးထားတဲ့ Parameter တွေအတိုင်း အတိအကျ ထည့်ထားပါတယ်
-        result = HF_CLIENT.predict(
-            song_input=handle_file(tts_filename), # Edge TTS ဖိုင်
-            voice_model="Black Panther",          # Model Name
-            pitch_change=pitch,                   # Pitch
+        # Step 2: Hugging Face သို့ လှမ်းချိတ်ခြင်း (ဒီရောက်မှ စချိတ်ပါမယ်)
+        print("Connecting to Hugging Face...")
+        
+        # ဒီနေရာမှာမှ Client ကို ခေါ်တဲ့အတွက် App စဖွင့်ချိန်မှာ Error မတက်တော့ပါဘူး
+        hf_client = Client("r3gm/AICoverGen") 
+
+        # Step 3: အသံပြောင်းခြင်း (API Call)
+        result = hf_client.predict(
+            song_input=handle_file(tts_filename),
+            voice_model="Black Panther", 
+            pitch_change=pitch,
             keep_files=False,
             is_webui=1,
             main_gain=0,
@@ -74,14 +62,13 @@ async def generate_voice(
             reverb_damping=0.7,
             output_format="mp3",
             extra_denoise=True,
-            steps=1, # 1 Step ဆိုတာ မြန်ပေမယ့် Quality နည်းနည်းလျော့မယ်
+            steps=1,
             api_name="/song_cover_pipeline"
         )
 
-        # Step 3: ရလာတဲ့ Result (Zip or Audio path) ကို ဖတ်ပြီး ပြန်ပို့ခြင်း
-        # Gradio က တခါတလေ Folder path ပြန်ပေးတတ်လို့ စစ်ရပါတယ်
+        # Step 4: ရလာတဲ့ Result ကို ပြန်ပို့ခြင်း
         if isinstance(result, tuple):
-             output_path = result[1] # Audio path
+             output_path = result[1]
         else:
              output_path = result
 
@@ -91,7 +78,14 @@ async def generate_voice(
         return Response(content=audio_data, media_type="audio/mpeg")
 
     except Exception as e:
-        return Response(content=f"Error: {str(e)}", status_code=500)
+        # Error တက်ရင် ဘာကြောင့်လဲ သိရအောင် Log ထုတ်ကြည့်မယ်
+        error_msg = str(e)
+        print(f"Error Occurred: {error_msg}")
+        
+        if "Could not fetch api info" in error_msg:
+            return Response(content="Error: Hugging Face Space (AICoverGen) သည် အိပ်ပျော်နေပါသဖြင့် နှိုးမရဖြစ်နေပါသည်။ ၅ မိနစ်ခန့်စောင့်ပြီး ပြန်စမ်းပါ (သို့) Space အသစ် ပြောင်းသုံးပါ။", status_code=500)
+            
+        return Response(content=f"Error: {error_msg}", status_code=500)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
