@@ -3,82 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Myanmar AI Voice Generator</title>
+    <title>Black Panther Voice Gen</title>
     <style>
-        body { font-family: sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
-        h2 { color: #333; margin-bottom: 20px; }
-        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; font-size: 16px; resize: none; box-sizing: border-box; }
-        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; font-size: 14px; box-sizing: border-box; }
-        button { background-color: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; transition: 0.3s; }
-        button:hover { background-color: #0056b3; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: #2d2d2d; padding: 2rem; border-radius: 12px; width: 90%; max-width: 400px; text-align: center; border: 1px solid #444; }
+        h2 { margin-bottom: 20px; color: #a29bfe; }
+        textarea { width: 100%; height: 100px; padding: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 8px; margin-bottom: 15px; font-size: 16px; resize: none; box-sizing: border-box; }
+        label { display: block; margin-bottom: 5px; text-align: left; font-size: 14px; color: #ccc; }
+        input[type="range"] { width: 100%; margin-bottom: 20px; }
+        button { background-color: #6c5ce7; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; transition: 0.3s; font-weight: bold; }
+        button:hover { background-color: #5649c0; }
+        button:disabled { background-color: #555; cursor: wait; }
         audio { width: 100%; margin-top: 20px; display: none; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #6c5ce7; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .credit { margin-top: 15px; font-size: 12px; color: #666; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Myanmar Voice Clone</h2>
+    <h2>Black Panther TTS</h2>
     
     <textarea id="textInput" placeholder="မြန်မာလို စာရိုက်ထည့်ပါ..."></textarea>
     
-    <input type="text" id="voiceIdInput" placeholder="ElevenLabs Voice ID ထည့်ပါ (Ex: 21m00T...)">
+    <label>Pitch (အသံအနိမ့်အမြင့်): <span id="pitchVal">0</span></label>
+    <input type="range" id="pitchInput" min="-12" max="12" value="0" oninput="document.getElementById('pitchVal').innerText = this.value">
     
-    <button id="generateBtn" onclick="generateAudio()">အသံထုတ်မည်</button>
+    <button id="generateBtn" onclick="generateAudio()">Generate Audio</button>
     
     <div class="loader" id="loader"></div>
     <audio id="audioPlayer" controls></audio>
-    
-    <div class="credit">Powered by EdgeTTS & ElevenLabs</div>
 </div>
 
 <script>
     async function generateAudio() {
         const text = document.getElementById("textInput").value;
-        const voiceId = document.getElementById("voiceIdInput").value;
+        const pitch = document.getElementById("pitchInput").value;
         const btn = document.getElementById("generateBtn");
         const loader = document.getElementById("loader");
         const audioPlayer = document.getElementById("audioPlayer");
 
-        if (!text || !voiceId) {
-            alert("စာသားနှင့် Voice ID ဖြည့်ရန် လိုအပ်ပါသည်!");
-            return;
-        }
+        if (!text) return alert("စာအရင်ရိုက်ပါ!");
 
-        // UI ပြင်ဆင်ခြင်း
         btn.disabled = true;
-        btn.innerText = "ခေတ္တစောင့်ပါ...";
+        btn.innerText = "Processing (ခဏစောင့်ပါ)...";
         loader.style.display = "block";
         audioPlayer.style.display = "none";
 
         const formData = new FormData();
         formData.append("text", text);
-        formData.append("voice_id", voiceId);
+        formData.append("pitch", pitch);
 
         try {
-            const response = await fetch("/generate", {
-                method: "POST",
-                body: formData
-            });
-
+            const response = await fetch("/generate", { method: "POST", body: formData });
             if (response.ok) {
                 const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                audioPlayer.src = url;
+                audioPlayer.src = URL.createObjectURL(blob);
                 audioPlayer.style.display = "block";
                 audioPlayer.play();
             } else {
-                alert("Error: အသံထုတ်မရပါ (API Key မှန်မမှန် စစ်ပါ)");
+                alert("Error: Server Busy ဖြစ်နေပါသည် (သို့) Time Out ဖြစ်သွားပါသည်");
             }
         } catch (error) {
             alert("Connection Error!");
         } finally {
             btn.disabled = false;
-            btn.innerText = "အသံထုတ်မည်";
+            btn.innerText = "Generate Audio";
             loader.style.display = "none";
         }
     }
