@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 edge-tts
-elevenlabs
+gradio_client==1.3.0
 python-multipart
 jinja2
 aiofiles
+
