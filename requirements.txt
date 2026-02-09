@@ -1,4 +1,7 @@
-gradio
+fastapi
+uvicorn
 edge-tts
-gradio_client
-
+elevenlabs
+python-multipart
+jinja2
+aiofiles
