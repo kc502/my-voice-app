@@ -7,9 +7,7 @@ from gradio_client import Client, handle_file
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# ==========================================
-# Link အမှန် (Myanmar - M တစ်လုံးတည်းဖြင့်)
-# ==========================================
+# Nano Banana ရဲ့ Space Link အမှန်
 HF_SPACE_NAME = "kochit/myanmar-rvc-tts"
 
 @app.get("/")
@@ -25,33 +23,29 @@ def generate_voice(
 ):
     try:
         print(f"Connecting to Space: {HF_SPACE_NAME}...")
-        
-        # Space ကို လှမ်းချိတ်ခြင်း
         client = Client(HF_SPACE_NAME)
         
-        # Hugging Face သို့ အလုပ်ခိုင်းခြင်း
-        # (Text, TTS Voice, RVC Model, Pitch)
+        # Screenshot ထဲကအတိုင်း Parameter တွေကို အတိအကျ ပို့ပါမယ်
         result = client.predict(
-            text,           
-            tts_voice,      
-            rvc_model,      
-            pitch,          
-            api_name="/predict"
+            text,           # Text Input
+            tts_voice,      # 'Nilar (Female)' or 'Thiha (Male)'
+            rvc_model,      # 'Black Panther', 'Tom Holland', etc.
+            pitch,          # Number (e.g. 0)
+            api_name="/convert_voice"  # Screenshot ထဲက နာမည်အမှန်
         )
         
-        # အသံဖိုင်လမ်းကြောင်းကို ယူခြင်း
+        # Result က (filepath, status) ပုံစံပြန်လာလို့ [0] ကို ယူရပါမယ်
         audio_path = result[0]
         
-        # ဖိုင်ကို ဖတ်ပြီး ပြန်ပို့ခြင်း
+        # ရလာတဲ့ အသံဖိုင်ကို ဖတ်ပြီး Web App သို့ ပြန်ပို့ခြင်း
         with open(audio_path, "rb") as f:
             audio_data = f.read()
             
         return Response(content=audio_data, media_type="audio/mpeg")
 
     except Exception as e:
-        error_msg = str(e)
-        print(f"Connection Error: {error_msg}")
-        return Response(content=f"Error: {error_msg}", status_code=500)
+        print(f"Error: {e}")
+        return Response(content=f"Error: {str(e)}", status_code=500)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
