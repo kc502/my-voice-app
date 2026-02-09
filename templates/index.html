@@ -3,72 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Black Panther Voice Gen</title>
+    <title>My Professional AI Voice</title>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: #2d2d2d; padding: 2rem; border-radius: 12px; width: 90%; max-width: 400px; text-align: center; border: 1px solid #444; }
-        h2 { margin-bottom: 20px; color: #a29bfe; }
-        textarea { width: 100%; height: 100px; padding: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 8px; margin-bottom: 15px; font-size: 16px; resize: none; box-sizing: border-box; }
-        label { display: block; margin-bottom: 5px; text-align: left; font-size: 14px; color: #ccc; }
-        input[type="range"] { width: 100%; margin-bottom: 20px; }
-        button { background-color: #6c5ce7; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; transition: 0.3s; font-weight: bold; }
-        button:hover { background-color: #5649c0; }
-        button:disabled { background-color: #555; cursor: wait; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e1e2f; padding: 2rem; border-radius: 15px; width: 90%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #333; }
+        h2 { text-align: center; color: #a29bfe; margin-bottom: 20px; }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #ccc; }
+        
+        textarea, select, input { width: 100%; padding: 12px; background: #2b2b40; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; font-size: 1rem; }
+        textarea:focus, select:focus { outline: 2px solid #a29bfe; }
+        
+        button { width: 100%; padding: 15px; background: linear-gradient(45deg, #6c5ce7, #a29bfe); color: white; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(108, 92, 231, 0.4); }
+        button:disabled { background: #555; cursor: not-allowed; transform: none; }
+        
         audio { width: 100%; margin-top: 20px; display: none; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #6c5ce7; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
+        .status { text-align: center; margin-top: 10px; font-size: 0.9rem; color: #ff7675; min-height: 20px;}
+        
+        /* Loading Spinner */
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #a29bfe; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 15px auto; display: none; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Black Panther TTS</h2>
+<div class="card">
+    <h2>🇲🇲 Myanmar AI Voice</h2>
     
-    <textarea id="textInput" placeholder="မြန်မာလို စာရိုက်ထည့်ပါ..."></textarea>
+    <div class="form-group">
+        <label>စာသားရိုက်ထည့်ပါ:</label>
+        <textarea id="text" rows="3" placeholder="မင်္ဂလာပါ ခင်ဗျာ..."></textarea>
+    </div>
+
+    <div class="form-group">
+        <label>Step 1: ဖတ်ပြမည့်သူ (TTS)</label>
+        <select id="tts_voice">
+            <option value="Thiha (Male)">Thiha (ကိုသီဟ - ကျား)</option>
+            <option value="Nilar (Female)">Nilar (မနီလာ - မ)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Step 2: ပြောင်းလဲမည့်အသံ (RVC Model)</label>
+        <select id="rvc_model">
+            <option value="Black Panther">Black Panther</option>
+            <option value="Tom Holland">Tom Holland (Spider-Man)</option>
+            <option value="Taylor Swift">Taylor Swift</option>
+            <option value="Ado (Japanese)">Ado (Japanese)</option>
+        </select>
+    </div>
     
-    <label>Pitch (အသံအနိမ့်အမြင့်): <span id="pitchVal">0</span></label>
-    <input type="range" id="pitchInput" min="-12" max="12" value="0" oninput="document.getElementById('pitchVal').innerText = this.value">
-    
-    <button id="generateBtn" onclick="generateAudio()">Generate Audio</button>
-    
-    <div class="loader" id="loader"></div>
-    <audio id="audioPlayer" controls></audio>
+    <div class="form-group">
+        <label>Pitch (အသံ အနိမ့်အမြင့်): <span id="pitchVal">0</span></label>
+        <input type="range" id="pitch" min="-12" max="12" value="0" oninput="document.getElementById('pitchVal').innerText = this.value">
+    </div>
+
+    <button id="btn" onclick="generate()">Generate Voice</button>
+    <div class="status" id="status"></div>
+    <div class="spinner" id="loader"></div>
+    <audio id="player" controls></audio>
 </div>
 
 <script>
-    async function generateAudio() {
-        const text = document.getElementById("textInput").value;
-        const pitch = document.getElementById("pitchInput").value;
-        const btn = document.getElementById("generateBtn");
-        const loader = document.getElementById("loader");
-        const audioPlayer = document.getElementById("audioPlayer");
+    async function generate() {
+        const text = document.getElementById('text').value;
+        const tts = document.getElementById('tts_voice').value;
+        const model = document.getElementById('rvc_model').value;
+        const pitch = document.getElementById('pitch').value;
+        
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('status');
+        const loader = document.getElementById('loader');
+        const player = document.getElementById('player');
 
-        if (!text) return alert("စာအရင်ရိုက်ပါ!");
+        if(!text) return status.innerText = "စာသား ရိုက်ထည့်ပေးပါ!";
 
+        // Loading ပြခြင်း
         btn.disabled = true;
-        btn.innerText = "Processing (ခဏစောင့်ပါ)...";
+        btn.innerText = "Processing...";
         loader.style.display = "block";
-        audioPlayer.style.display = "none";
+        status.innerText = "";
+        player.style.display = "none";
 
         const formData = new FormData();
         formData.append("text", text);
+        formData.append("tts_voice", tts);
+        formData.append("rvc_model", model);
         formData.append("pitch", pitch);
 
         try {
             const response = await fetch("/generate", { method: "POST", body: formData });
+            
             if (response.ok) {
                 const blob = await response.blob();
-                audioPlayer.src = URL.createObjectURL(blob);
-                audioPlayer.style.display = "block";
-                audioPlayer.play();
+                const url = URL.createObjectURL(blob);
+                player.src = url;
+                player.style.display = "block";
+                player.play();
+                status.innerText = "Success!";
             } else {
-                alert("Error: Server Busy ဖြစ်နေပါသည် (သို့) Time Out ဖြစ်သွားပါသည်");
+                const errText = await response.text();
+                status.innerText = "Error: " + errText;
             }
-        } catch (error) {
-            alert("Connection Error!");
+        } catch (e) {
+            status.innerText = "Connection Error!";
         } finally {
             btn.disabled = false;
-            btn.innerText = "Generate Audio";
+            btn.innerText = "Generate Voice";
             loader.style.display = "none";
         }
     }
