@@ -2,4 +2,5 @@ fastapi
 uvicorn
 python-multipart
 jinja2
-gradio_client
+gradio_client>=1.0.0
+
