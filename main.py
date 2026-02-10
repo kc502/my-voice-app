@@ -9,6 +9,12 @@ templates = Jinja2Templates(directory="templates")
 
 HF_SPACE_NAME = "kochit/myanmar-rvc-tts"
 
+# ==========================================
+# Render Environment မှ Token ကို လှမ်းယူခြင်း
+# (Code ထဲမှာ Token မရေးတော့ပါ)
+# ==========================================
+HF_TOKEN = os.environ.get("HF_TOKEN")
+
 @app.get("/")
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -22,7 +28,14 @@ def generate_voice(
 ):
     try:
         print(f"Connecting to Space: {HF_SPACE_NAME}...")
-        client = Client(HF_SPACE_NAME)
+        
+        # Token မရှိရင် Error တက်မှာစိုးလို့ စစ်ပေးမယ်
+        if not HF_TOKEN:
+            print("Warning: HF_TOKEN မရှိပါ။ Quota Error တက်နိုင်ပါသည်။")
+            client = Client(HF_SPACE_NAME) # Token မပါဘဲ ချိတ်မယ်
+        else:
+            print("Using Secure Token from Render Environment.")
+            client = Client(HF_SPACE_NAME, hf_token=HF_TOKEN) # Token နဲ့ ချိတ်မယ်
         
         # Hugging Face သို့ အလုပ်ခိုင်းခြင်း
         result = client.predict(
@@ -33,19 +46,15 @@ def generate_voice(
             api_name="/convert_voice"
         )
         
-        # result[0] = အသံဖိုင်လမ်းကြောင်း
-        # result[1] = Status Message (Success သို့မဟုတ် Error စာသား)
         audio_path = result[0]
         status_msg = result[1]
         
-        # =======================================================
-        # ပြင်ဆင်ချက်: အသံဖိုင် မပါလာရင် Error စာသားကို ပြန်ပို့မည်
-        # =======================================================
         if audio_path is None:
             print(f"HF Returned Error: {status_msg}")
+            if "quota" in str(status_msg).lower():
+                 return Response(content="Error: Hugging Face Quota ကုန်သွားပါပြီ။", status_code=500)
             return Response(content=f"Hugging Face Error: {status_msg}", status_code=500)
         
-        # အသံဖိုင် ပါလာမှ ဖွင့်မည်
         with open(audio_path, "rb") as f:
             audio_data = f.read()
             
